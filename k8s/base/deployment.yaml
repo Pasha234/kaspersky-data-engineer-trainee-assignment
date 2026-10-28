@@ -1,0 +1,185 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: vllm
+
+  template:
+    metadata:
+      labels:
+        app: vllm
+
+    spec:
+      # The vllm Service otherwise injects VLLM_PORT=tcp://..., which conflicts
+      # with vLLM's numeric internal port setting. Service DNS still works.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      initContainers:
+        - name: model-downloader
+          image: model-downloader:latest
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          env:
+            - name: MODEL_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: vllm-config
+                  key: MODEL_ID
+
+            - name: MODEL_REVISION
+              valueFrom:
+                configMapKeyRef:
+                  name: vllm-config
+                  key: MODEL_REVISION
+
+            - name: HF_TOKEN_PATH
+              value: /run/secrets/hf_token
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: hf-secret-volume
+              mountPath: /run/secrets
+              readOnly: true
+
+      containers:
+        - name: vllm
+          image: vllm-cpu:latest
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          env:
+            - name: HF_HUB_OFFLINE
+              value: "1"
+
+            - name: VLLM_CPU_OMP_THREADS_BIND
+              value: "nobind"
+            - name: OMP_NUM_THREADS
+              value: "2"
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "4"
+              memory: "5Gi"
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 120
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+            - name: cache-volume
+              mountPath: /home/vllmuser/.cache
+            # Mount individual files so /app/privacy_filter.py stays visible.
+            - name: config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: config-volume
+              mountPath: /app/logging_config.json
+              subPath: logging_config.json
+              readOnly: true
+            - name: api-secret-volume
+              mountPath: /run/secrets
+              readOnly: true
+
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: model-storage
+
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+
+        - name: cache-volume
+          emptyDir: {}
+
+        - name: config-volume
+          configMap:
+            name: vllm-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+              - key: logging_config.json
+                path: logging_config.json
+        - name: hf-secret-volume
+          secret:
+            secretName: vllm-secrets
+            defaultMode: 0440
+            optional: true
+            items:
+              - key: HF_TOKEN
+                path: hf_token
+        - name: api-secret-volume
+          secret:
+            secretName: vllm-secrets
+            defaultMode: 0440
+            items:
+              - key: VLLM_API_KEY
+                path: vllm_api_key

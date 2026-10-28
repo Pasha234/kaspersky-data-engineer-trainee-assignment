@@ -1,0 +1,13 @@
+model: /models/current
+served-model-name: local-instruct
+dtype: bfloat16
+max-model-len: 2048
+max-num-seqs: 2
+
+middleware:
+  - privacy_auth.FileTokenAuthMiddleware
+
+enable-log-requests: false
+enable-log-outputs: false
+disable-uvicorn-access-log: true
+kv-cache-memory-bytes: 268435456 # 256 MiB

@@ -1,0 +1,43 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "filters": {
+        "privacy_filter": {
+            "()": "privacy_filter.PrivacyLogFilter"
+        }
+    },
+    "formatters": {
+        "vllm": {
+            "class": "vllm.logging_utils.NewLineFormatter",
+            "datefmt": "%m-%d %H:%M:%S",
+            "format": "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "vllm",
+            "filters": [
+                "privacy_filter"
+            ],
+            "level": "INFO",
+            "stream": "ext://sys.stdout"
+        }
+    },
+    "loggers": {
+        "vllm": {
+            "handlers": [
+                "console"
+            ],
+            "level": "INFO",
+            "propagate": false
+        },
+        "vllm.audit": {
+            "handlers": [
+                "console"
+            ],
+            "level": "INFO",
+            "propagate": false
+        }
+    }
+}

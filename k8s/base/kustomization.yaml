@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 1. List your YAML manifests so `kubectl apply -k .` applies them all at once!
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+
+# 2. Automatically generate the 'vllm-config' ConfigMap from your real files!
+configMapGenerator:
+  - name: vllm-config
+    literals:
+      - MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
+      - MODEL_REVISION=7ae557604adf67be50417f59c2c2f167def9a775
+    files:
+      - config.yaml
+      - logging_config.json
+
+secretGenerator:
+  - name: vllm-secrets
+    type: Opaque
+    envs:
+      - .env.secrets
