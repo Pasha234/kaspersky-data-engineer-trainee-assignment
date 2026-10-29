@@ -1,1 +1,3 @@
 /k8s/base/.env.secrets
+/bench-results
+/tokenizer
